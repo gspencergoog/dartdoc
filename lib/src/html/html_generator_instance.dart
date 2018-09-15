@@ -173,10 +173,10 @@ class HtmlGeneratorInstance {
     _build('__404error.html', _templates.errorTemplate, data);
   }
 
-  void generateLibrary(PackageGraph packageGraph, Library lib) {
+  Future generateLibrary(PackageGraph packageGraph, Library lib) async {
     logInfo(
         'Generating docs for library ${lib.name} from ${lib.element.source.uri}...');
-    if (!lib.isAnonymous && !lib.hasDocumentation) {
+    if (!lib.isAnonymous && !(await lib.hasDocumentation)) {
       packageGraph.warnOnElement(lib, PackageWarning.noLibraryLevelDocs);
     }
     TemplateData data = new LibraryTemplateData(_options, packageGraph, lib);

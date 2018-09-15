@@ -2,6 +2,8 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:dartdoc/src/model.dart';
 
 abstract class HtmlOptions {
@@ -27,8 +29,8 @@ abstract class TemplateData<T extends Documentable> {
 
   TemplateData(this.htmlOptions, this.packageGraph);
 
-  String get documentation => self.documentation;
-  String get oneLineDoc => self.oneLineDoc;
+  Future<String> get documentation async => self.documentation;
+  Future<String> get oneLineDoc async => self.oneLineDoc;
   String get title;
   String get layoutTitle;
   String get metaDescription;
@@ -128,7 +130,7 @@ class LibraryTemplateData extends TemplateData<Library> {
   @override
   String get title => '${library.name} library - Dart API';
   @override
-  String get documentation => library.documentation;
+  Future<String> get documentation async => library.documentation;
   @override
   String get htmlBase => '..';
   @override

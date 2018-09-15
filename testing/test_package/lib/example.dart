@@ -581,3 +581,21 @@ abstract class TypedFunctionsWithoutTypedefs {
   /// Returns a complex typedef that includes some anonymous typed functions.
   aComplexTypedef getAComplexTypedef<A4, A5, A6>();
 }
+
+abstract class ToolUser {
+  /// Invokes a tool.
+  ///
+  /// {@tool drill --type=hammer --flag " |\[]!@#$%^&*()_+"}
+  /// Yes it is!
+  /// Ok, fine it isn't.
+  /// {@end-tool}
+  void invokeTool();
+
+  /// Invokes an absolute-path tool.
+  /// The 'hammer' tool is configured in dartdoc_options.yaml to be /bin/sh.
+  ///
+  /// {@tool hammer -c 'echo This will appear'}
+  /// This will not appear.
+  /// {@end-tool}
+  void invokeAbsolutePathTool();
+}

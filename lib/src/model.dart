@@ -1153,11 +1153,11 @@ class Constructor extends ModelElement
 /// Bridges the gap between model elements and packages,
 /// both of which have documentation.
 abstract class Documentable extends Nameable {
-  String get documentation;
-  String get documentationAsHtml;
-  bool get hasDocumentation;
-  bool get hasExtendedDocumentation;
-  String get oneLineDoc;
+  Future<String> get documentation;
+  Future<String> get documentationAsHtml;
+  Future<bool> get hasDocumentation;
+  Future<bool> get hasExtendedDocumentation;
+  Future<String> get oneLineDoc;
   PackageGraph get packageGraph;
   bool get isDocumented;
   DartdocOptionContext get config;
@@ -1166,8 +1166,8 @@ abstract class Documentable extends Nameable {
 /// Mixin implementing dartdoc categorization for ModelElements.
 abstract class Categorization implements ModelElement {
   @override
-  String _buildDocumentationLocal() {
-    _rawDocs = _buildDocumentationBase();
+  Future<String> _buildDocumentationLocal() async {
+    _rawDocs = await _buildDocumentationBase();
     _rawDocs = _stripAndSetDartdocCategory(_rawDocs);
     return _rawDocs;
   }
@@ -1184,9 +1184,9 @@ abstract class Categorization implements ModelElement {
   }
 
   String _categoryName;
-  String get categoryName {
+  Future<String> get categoryName async {
     // TODO(jcollins-g): avoid side-effect dependency
-    if (_categoryName == null) documentationLocal;
+    if (_categoryName == null) await documentationLocal;
     return _categoryName;
   }
 }
@@ -1196,17 +1196,22 @@ abstract class Canonicalization extends Object
     with Locatable
     implements Documentable {
   bool get isCanonical;
-  Library get canonicalLibrary;
+  Future<Library> get canonicalLibrary;
 
   /// Pieces of the location split by [locationSplitter] (removing package: and
   /// slashes).
   Set<String> get locationPieces;
 
-  List<ScoredCandidate> scoreCanonicalCandidates(List<Library> libraries) {
-    return libraries.map((l) => scoreElementWithLibrary(l)).toList()..sort();
+  Future<List<ScoredCandidate>> scoreCanonicalCandidates(
+      List<Library> libraries) async {
+    List<ScoredCandidate> candidates = [];
+    for (Library library in libraries) {
+      candidates.add(await scoreElementWithLibrary(library));
+    }
+    return candidates..sort();
   }
 
-  ScoredCandidate scoreElementWithLibrary(Library lib) {
+  Future<ScoredCandidate> scoreElementWithLibrary(Library lib) async {
     ScoredCandidate scoredCandidate = new ScoredCandidate(this, lib);
     Iterable<String> resplit(Set<String> items) sync* {
       for (String item in items) {
@@ -1217,7 +1222,7 @@ abstract class Canonicalization extends Object
     }
 
     // Large boost for @canonicalFor, essentially overriding all other concerns.
-    if (lib.canonicalFor.contains(fullyQualifiedName)) {
+    if ((await lib.canonicalFor).contains(fullyQualifiedName)) {
       scoredCandidate.alterScore(5.0, 'marked @canonicalFor');
     }
     // Penalty for deprecated libraries.
@@ -1334,7 +1339,7 @@ class EnumField extends Field {
   }
 
   @override
-  String get documentation {
+  Future<String> get documentation async {
     if (name == 'values') {
       return 'A constant List of the values in this enum, in order of their declaration.';
     } else if (name == 'index') {
@@ -1372,7 +1377,7 @@ class EnumField extends Field {
   }
 
   @override
-  String get oneLineDoc => documentationAsHtml;
+  Future<String> get oneLineDoc async => documentationAsHtml;
 }
 
 class Field extends ModelElement
@@ -1410,7 +1415,7 @@ class Field extends ModelElement
   }
 
   @override
-  String get documentation {
+  Future<String> get documentation async {
     // Verify that hasSetter and hasGetterNoSetter are mutually exclusive,
     // to prevent displaying more or less than one summary.
     if (isPublic) {
@@ -1418,7 +1423,7 @@ class Field extends ModelElement
         ..addAll([hasPublicSetter, hasPublicGetterNoSetter]);
       assert(assertCheck.containsAll([true, false]));
     }
-    documentationFrom;
+    await documentationFrom;
     return super.documentation;
   }
 
@@ -1617,26 +1622,27 @@ abstract class GetterSetterCombo implements ModelElement {
     return _documentationFrom;
   }
 
-  bool get hasAccessorsWithDocs =>
-      (hasPublicGetter && getter.documentation.isNotEmpty ||
-          hasPublicSetter && setter.documentation.isNotEmpty);
-  bool get getterSetterBothAvailable => (hasPublicGetter &&
-      getter.documentation.isNotEmpty &&
+  Future<bool> get hasAccessorsWithDocs async =>
+      (hasPublicGetter && (await getter.documentation).isNotEmpty ||
+          hasPublicSetter && (await setter.documentation).isNotEmpty);
+  Future<bool> get getterSetterBothAvailable async => (hasPublicGetter &&
+      (await getter.documentation).isNotEmpty &&
       hasPublicSetter &&
-      setter.documentation.isNotEmpty);
+      (await setter.documentation).isNotEmpty);
 
   @override
-  String get oneLineDoc {
+  Future<String> get oneLineDoc async {
     if (_oneLineDoc == null) {
-      if (!hasAccessorsWithDocs) {
+      if (!(await hasAccessorsWithDocs)) {
         _oneLineDoc = _documentation.asOneLiner;
       } else {
         StringBuffer buffer = new StringBuffer();
-        if (hasPublicGetter && getter.oneLineDoc.isNotEmpty) {
+        if (hasPublicGetter && (await getter.oneLineDoc).isNotEmpty) {
           buffer.write('${getter.oneLineDoc}');
         }
-        if (hasPublicSetter && setter.oneLineDoc.isNotEmpty) {
-          buffer.write('${getterSetterBothAvailable ? "" : setter.oneLineDoc}');
+        if (hasPublicSetter && (await setter.oneLineDoc).isNotEmpty) {
+          buffer.write(
+              '${(await getterSetterBothAvailable) ? "" : setter.oneLineDoc}');
         }
         _oneLineDoc = buffer.toString();
       }
@@ -1895,10 +1901,10 @@ class Library extends ModelElement with Categorization {
 
   Set<String> _canonicalFor;
 
-  Set<String> get canonicalFor {
+  Future<Set<String>> get canonicalFor async {
     if (_canonicalFor == null) {
       // TODO(jcollins-g): restructure to avoid using side effects.
-      documentation;
+      await documentation;
     }
     return _canonicalFor;
   }
@@ -1908,14 +1914,15 @@ class Library extends ModelElement with Categorization {
   ///
   /// Example:
   ///   {@canonicalFor libname.ClassName}
-  String _setCanonicalFor(String rawDocs) {
+  Future<String> _setCanonicalFor(String rawDocs) async {
     if (_canonicalFor == null) {
       _canonicalFor = new Set();
     }
     Set<String> notFoundInAllModelElements = new Set();
     final canonicalRegExp = new RegExp(r'{@canonicalFor\s([^}]+)}');
-    rawDocs = rawDocs.replaceAllMapped(canonicalRegExp, (Match match) {
-      canonicalFor.add(match.group(1));
+    rawDocs = await replaceAllMappedAsync(rawDocs, canonicalRegExp,
+        (Match match) async {
+      (await canonicalFor).add(match.group(1));
       notFoundInAllModelElements.add(match.group(1));
       return '';
     });
@@ -1930,9 +1937,9 @@ class Library extends ModelElement with Categorization {
 
   String _libraryDocs;
   @override
-  String get documentation {
+  Future<String> get documentation async {
     if (_libraryDocs == null) {
-      _libraryDocs = _setCanonicalFor(super.documentation);
+      _libraryDocs = await _setCanonicalFor(await super.documentation);
     }
     return _libraryDocs;
   }
@@ -2886,16 +2893,19 @@ abstract class ModelElement extends Canonicalization
     return docFrom;
   }
 
-  String _buildDocumentationLocal() => _buildDocumentationBase();
+  Future<String> _buildDocumentationLocal() async =>
+      await _buildDocumentationBase();
 
   /// Separate from _buildDocumentationLocal for overriding.
-  String _buildDocumentationBase() {
+  Future<String> _buildDocumentationBase() async {
     assert(_rawDocs == null);
     if (config.dropTextFrom.contains(element.library.name)) {
       _rawDocs = '';
     } else {
       _rawDocs = computeDocumentationComment ?? '';
       _rawDocs = stripComments(_rawDocs) ?? '';
+      // Must evaluate tools first, in case they insert any other directives.
+      _rawDocs = await _evaluateTools(_rawDocs);
       _rawDocs = _injectExamples(_rawDocs);
       _rawDocs = _injectAnimations(_rawDocs);
       _rawDocs = _stripMacroTemplatesAndAddToIndex(_rawDocs);
@@ -2908,14 +2918,18 @@ abstract class ModelElement extends Canonicalization
   /// definitions are stripped, but macros themselves are not injected.  This
   /// is a two stage process to avoid ordering problems.
   String _documentationLocal;
-  String get documentationLocal =>
-      _documentationLocal ??= _buildDocumentationLocal();
+  Future<String> get documentationLocal async =>
+      _documentationLocal ??= await _buildDocumentationLocal();
 
   /// Returns the docs, stripped of their leading comments syntax.
   @override
-  String get documentation {
-    return _injectMacros(
-        documentationFrom.map((e) => e.documentationLocal).join('<p>'));
+  Future<String> get documentation async {
+    List<String> docList = [];
+    for (Future<String> doc in documentationFrom
+        .map<Future<String>>((e) async => await e.documentationLocal)) {
+      docList.add(await doc);
+    }
+    return _injectMacros(docList.join('<p>'));
   }
 
   Library get definingLibrary => packageGraph.findOrCreateLibraryFor(element);
@@ -2925,7 +2939,7 @@ abstract class ModelElement extends Canonicalization
   // we tried to compute it before.
   bool _canonicalLibraryIsSet = false;
   @override
-  Library get canonicalLibrary {
+  Future<Library> get canonicalLibrary async {
     if (!_canonicalLibraryIsSet) {
       // This is not accurate if we are constructing the Package.
       assert(packageGraph.allLibrariesAdded);
@@ -2984,7 +2998,7 @@ abstract class ModelElement extends Canonicalization
             // considers this element to be primarily 'from', and therefore,
             // canonical.  Still warn if the heuristic isn't that confident.
             List<ScoredCandidate> scoredCandidates =
-                warnable.scoreCanonicalCandidates(candidateLibraries);
+                await warnable.scoreCanonicalCandidates(candidateLibraries);
             candidateLibraries =
                 scoredCandidates.map((s) => s.library).toList();
             double secondHighestScore =
@@ -3045,7 +3059,7 @@ abstract class ModelElement extends Canonicalization
   }
 
   @override
-  String get documentationAsHtml => _documentation.asHtml;
+  Future<String> get documentationAsHtml async => _documentation.asHtml;
 
   @override
   Element get element => _element;
@@ -3061,8 +3075,8 @@ abstract class ModelElement extends Canonicalization
 
   /// Returns a link to extended documentation, or the empty string if that
   /// does not exist.
-  String get extendedDocLink {
-    if (hasExtendedDocumentation) {
+  Future<String> get extendedDocLink async {
+    if (await hasExtendedDocumentation) {
       return '<a href="${href}">[...]</a>';
     }
     return '';
@@ -3104,11 +3118,11 @@ abstract class ModelElement extends Canonicalization
   bool get hasAnnotations => annotations.isNotEmpty;
 
   @override
-  bool get hasDocumentation =>
-      documentation != null && documentation.isNotEmpty;
+  Future<bool> get hasDocumentation async =>
+      (await documentation) != null && (await documentation).isNotEmpty;
 
   @override
-  bool get hasExtendedDocumentation =>
+  Future<bool> get hasExtendedDocumentation async =>
       href != null && _documentation.hasExtendedDocs;
 
   bool get hasParameters => parameters.isNotEmpty;
@@ -3221,10 +3235,10 @@ abstract class ModelElement extends Canonicalization
 
   String _oneLineDoc;
   @override
-  String get oneLineDoc {
+  Future<String> get oneLineDoc async {
     if (_oneLineDoc == null) {
       _oneLineDoc =
-          '${_documentation.asOneLiner}${extendedDocLink.isEmpty ? "" : " $extendedDocLink"}';
+          '${_documentation.asOneLiner}${(await extendedDocLink).isEmpty ? "" : " $extendedDocLink"}';
     }
     return _oneLineDoc;
   }
@@ -3548,6 +3562,46 @@ abstract class ModelElement extends Canonicalization
     });
   }
 
+  /// Looks for tools invocations, looks up their bound executables in the
+  /// settings, and executes them with the source comment material as input,
+  /// returning the output of the tool.
+  Future<String> _evaluateTools(String rawDocs) async {
+    // Matches all tool directives (even some invalid ones). This is so
+    // we can give good error messages if the directive is malformed, instead of
+    // just silently emitting it as-is.
+    final RegExp basicToolRegExp = new RegExp(
+        r'[ ]*{@tool\s+([^}]+)}([\s\S]+?){@end-tool}[ ]*\n?',
+        multiLine: true);
+
+    return replaceAllMappedAsync(rawDocs, basicToolRegExp, (Match match) async {
+      List<String> args = _splitUpQuotedArgs(match[1]).toList();
+      // Tool name must come first.
+      if (args.isEmpty) {
+        warn(PackageWarning.toolError,
+            message: 'Must specify a tool to execute for the @tool directive.');
+        return '';
+      }
+      String tool = args.removeAt(0);
+      if (!config.tools.containsKey(tool)) {
+        warn(PackageWarning.toolError,
+            message:
+                'Unable to find definition for tool "$tool" in configuration.');
+        return '';
+      }
+      String toolPath = config.tools[tool];
+      ToolRunner runner =
+          new ToolRunner.create(toolPath, args: args, content: match[2]);
+      bool success = await runner.run();
+      if (!success) {
+        warn(PackageWarning.toolError,
+            message:
+                'Tool exited prematurely with exit code ${runner.exitCode}:\n${runner.stderr}');
+        return '';
+      }
+      return runner.stdout;
+    });
+  }
+
   /// Replace &#123;@animation ...&#125; in API comments with some HTML to manage an
   /// MPEG 4 video as an animation.
   ///
@@ -3778,11 +3832,8 @@ abstract class ModelElement extends Canonicalization
   /// "foo=bar" argument as "--foo=bar". It does handle quoted args like
   /// "foo='bar baz'" too, returning just bar (without quotes) for the foo
   /// value.
-  ///
-  /// It then parses the resulting argument list normally with [argParser] and
-  /// returns the result.
-  ArgResults _parseArgs(
-      String argsAsString, ArgParser argParser, String directiveName) {
+  Iterable<String> _splitUpQuotedArgs(String argsAsString,
+      {bool convertToArgs = false}) {
     // Regexp to take care of splitting arguments, and handling the quotes
     // around arguments, if any.
     //
@@ -3796,16 +3847,26 @@ abstract class ModelElement extends Canonicalization
         r'([^ ]+))'); // without quotes.
     final Iterable<Match> matches = argMatcher.allMatches(argsAsString);
 
-    // Remove quotes around args, and for any args that look like assignments
-    // (start with valid option names followed by an equals sign), add a "--" in front
-    // so that they parse as options.
-    final Iterable<String> args = matches.map<String>((Match match) {
+    // Remove quotes around args, and if convertToArgs is true, then for any
+    // args that look like assignments (start with valid option names followed
+    // by an equals sign), add a "--" in front so that they parse as options.
+    return matches.map<String>((Match match) {
       String option = '';
-      if (match[1] != null) {
+      if (convertToArgs && match[1] != null && !match[1].startsWith('-'))
         option = '--${match[1]}';
-      }
       return option + (match[3] ?? '') + (match[4] ?? '');
     });
+  }
+
+  /// Helper to process arguments given as a (possibly quoted) string.
+  ///
+  /// First, this will split the given [argsAsString] into separate arguments
+  /// with [_splitUpQuotedArgs] it then parses the resulting argument list
+  /// normally with [argParser] and returns the result.
+  ArgResults _parseArgs(
+      String argsAsString, ArgParser argParser, String directiveName) {
+    Iterable<String> args =
+        _splitUpQuotedArgs(argsAsString, convertToArgs: true);
 
     try {
       return argParser.parse(args);
@@ -4037,26 +4098,26 @@ class PackageGraph {
   // to this graph.
 
   /// Construct a package graph.
-  /// [libraryElements] - Libraries to be documented.
-  /// [specialLibraryElements] - Any libraries that may not be documented, but
+  /// [_libraryElements] - Libraries to be documented.
+  /// [_specialLibraryElements] - Any libraries that may not be documented, but
   /// contain required [SpecialClass]es.
-  PackageGraph(
-      Iterable<LibraryElement> libraryElements,
-      Iterable<LibraryElement> specialLibraryElements,
-      this.config,
-      this.packageMeta,
-      this._packageWarningOptions,
-      this.driver,
-      this.sdk) {
+  PackageGraph(this._libraryElements, this._specialLibraryElements, this.config,
+      this.packageMeta, this._packageWarningOptions, this.driver, this.sdk);
+
+  final Iterable<LibraryElement> _libraryElements;
+  final Iterable<LibraryElement> _specialLibraryElements;
+
+  Future<void> init() async {
     assert(_allConstructedModelElements.isEmpty);
     assert(allLibraries.isEmpty);
+
     _packageWarningCounter = new PackageWarningCounter(_packageWarningOptions);
 
     // Build [Package] objects.
-    libraryElements.forEach((element) {});
+    _libraryElements.forEach((element) {});
 
     // Build [Library] objects, and link them to [Package]s.
-    libraryElements.forEach((element) {
+    _libraryElements.forEach((element) {
       var packageMeta = new PackageMeta.fromElement(element, config);
       var lib = new Library._(
           element, this, new Package.fromPackageMeta(packageMeta, this));
@@ -4072,13 +4133,14 @@ class PackageGraph {
     allLibrariesAdded = true;
 
     // [findOrCreateLibraryFor] already adds to the proper structures.
-    specialLibraryElements.forEach((element) {
+    _specialLibraryElements.forEach((element) {
       findOrCreateLibraryFor(element);
     });
 
     // Go through docs of every ModelElement in package to pre-build the macros
     // index.
-    allLocalModelElements.forEach((m) => m.documentationLocal);
+    await Future.wait(
+        allLocalModelElements.map<Future<String>>((m) => m.documentationLocal));
     _macrosAdded = true;
 
     // Scan all model elements to insure that interceptor and other special
@@ -4353,6 +4415,9 @@ class PackageGraph {
         break;
       case PackageWarning.invalidParameter:
         warningMessage = 'invalid parameter to dartdoc directive: ${message}';
+        break;
+      case PackageWarning.toolError:
+        warningMessage = 'tool execution failed: ${message}';
         break;
       case PackageWarning.deprecated:
         warningMessage = 'deprecated dartdoc usage: ${message}';
@@ -4944,7 +5009,7 @@ class Package extends LibraryContainer
   @override
   bool get isCanonical => true;
   @override
-  Library get canonicalLibrary => null;
+  Future<Library> get canonicalLibrary async => null;
 
   /// Pieces of the location split by [locationSplitter] (removing package: and
   /// slashes).
@@ -4969,16 +5034,17 @@ class Package extends LibraryContainer
 
   /// Return true if the code has defined non-default categories for libraries
   /// in this package.
-  bool get hasCategories => categories.isNotEmpty;
+  Future<bool> get hasCategories async => (await categories).isNotEmpty;
 
   @override
   List<String> get containerOrder => packageGraph.config.packageOrder;
 
-  LibraryContainer get defaultCategory => nameToCategory[null];
+  Future<LibraryContainer> get defaultCategory async =>
+      (await nameToCategory)[null];
 
   String _documentationAsHtml;
   @override
-  String get documentationAsHtml {
+  Future<String> get documentationAsHtml async {
     if (_documentationAsHtml != null) return _documentationAsHtml;
     _documentationAsHtml = new Documentation.forElement(this).asHtml;
 
@@ -4986,16 +5052,17 @@ class Package extends LibraryContainer
   }
 
   @override
-  String get documentation {
+  Future<String> get documentation async {
     return hasDocumentationFile ? documentationFile.contents : null;
   }
 
   @override
-  bool get hasDocumentation =>
+  Future<bool> get hasDocumentation async =>
       documentationFile != null && documentationFile.contents.isNotEmpty;
 
   @override
-  bool get hasExtendedDocumentation => documentation.isNotEmpty;
+  Future<bool> get hasExtendedDocumentation async =>
+      (await documentation).isNotEmpty;
 
   // TODO: Clients should use [documentationFile] so they can act differently on
   // plain text or markdown.
@@ -5004,7 +5071,7 @@ class Package extends LibraryContainer
   FileContents get documentationFile => packageMeta.getReadmeContents();
 
   @override
-  String get oneLineDoc => '';
+  Future<String> get oneLineDoc async => '';
 
   @override
   bool get isDocumented =>
@@ -5098,11 +5165,11 @@ class Package extends LibraryContainer
   }
 
   /// A map of category name to the category itself.
-  Map<String, Category> get nameToCategory {
+  Future<Map<String, Category>> get nameToCategory async {
     if (_nameToCategory.isEmpty) {
       _nameToCategory[null] = new Category(null, this, config);
       for (Library lib in libraries) {
-        String category = lib.categoryName;
+        String category = await lib.categoryName;
         _nameToCategory.putIfAbsent(
             category, () => new Category(category, this, config));
         _nameToCategory[category]._libraries.add(lib);
@@ -5112,10 +5179,13 @@ class Package extends LibraryContainer
   }
 
   List<LibraryContainer> _categories;
-  List<LibraryContainer> get categories {
+  Future<List<LibraryContainer>> get categories async {
     if (_categories == null) {
-      _categories = nameToCategory.values.where((c) => c.name != null).toList()
-        ..sort();
+      _categories = (await nameToCategory)
+          .values
+          .where((c) => c.name != null)
+          .toList()
+            ..sort();
     }
     return _categories;
   }
@@ -5380,7 +5450,7 @@ class TopLevelVariable extends ModelElement
   bool get isInherited => false;
 
   @override
-  String get documentation {
+  Future<String> get documentation async {
     // Verify that hasSetter and hasGetterNoSetter are mutually exclusive,
     // to prevent displaying more or less than one summary.
     if (isPublic) {
@@ -5567,8 +5637,9 @@ class PackageBuilder {
     }
     await getLibraries(libraries, specialLibraries, getFiles,
         specialLibraryFiles(findSpecialsSdk).toSet());
-    return new PackageGraph(libraries, specialLibraries, config,
-        config.topLevelPackageMeta, getWarningOptions(), driver, sdk);
+    return await new PackageGraph(libraries, specialLibraries, config,
+        config.topLevelPackageMeta, getWarningOptions(), driver, sdk)
+      ..init();
   }
 
   DartSdk _sdk;
@@ -5691,6 +5762,7 @@ class PackageBuilder {
     if (config.showWarnings) {
       for (PackageWarning kind in PackageWarning.values) {
         switch (kind) {
+          case PackageWarning.toolError:
           case PackageWarning.invalidParameter:
           case PackageWarning.unresolvedExport:
             warningOptions.error(kind);

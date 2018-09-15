@@ -5,6 +5,7 @@
 /// Utility code to convert markdown comments to html.
 library dartdoc.markdown_processor;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -948,9 +949,9 @@ class Documentation {
     return _commentRefs;
   }
 
-  void _renderHtmlForDartdoc(bool processAllDocs) {
+  Future _renderHtmlForDartdoc(bool processAllDocs) async {
     Tuple3<String, String, bool> renderResults =
-        _renderMarkdownToHtml(processAllDocs);
+        await _renderMarkdownToHtml(processAllDocs);
     if (processAllDocs) {
       _asHtml = renderResults.item1;
     }
@@ -965,7 +966,7 @@ class Documentation {
 
   /// Returns a tuple of longHtml, shortHtml, hasExtendedDocs
   /// (longHtml is NULL if !processFullDocs)
-  Tuple3<String, String, bool> _renderMarkdownToHtml(bool processFullDocs) {
+  Future<Tuple3<String, String, bool>> _renderMarkdownToHtml(bool processFullDocs) async {
     md.Node _linkResolver(String name, [String _]) {
       if (name.isEmpty) {
         return null;
@@ -973,7 +974,7 @@ class Documentation {
       return new md.Text(_linkDocReference(name, _element, commentRefs));
     }
 
-    String text = _element.documentation;
+    String text = await _element.documentation;
     _showWarningsForGenericsOutsideSquareBracketsBlocks(text, _element);
     MarkdownDocument document = new MarkdownDocument(
         inlineSyntaxes: _markdown_syntaxes,

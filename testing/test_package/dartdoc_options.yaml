@@ -1,2 +1,5 @@
 dartdoc:
   categoryOrder: ["Real Libraries", "Unreal"]
+  tools:
+    drill: "bin/drill.sh"
+    hammer: "/bin/sh"

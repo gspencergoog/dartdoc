@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:dartdoc/dartdoc.dart';
 import 'package:dartdoc/src/model.dart';
 import 'package:dartdoc/src/special_elements.dart';
+import 'package:dartdoc/src/utils.dart';
 import 'package:dartdoc/src/warnings.dart';
 import 'package:path/path.dart' as pathLib;
 import 'package:test/test.dart';
@@ -76,6 +77,36 @@ void main() {
     sdkAsPackageGraph = utils.testPackageGraphSdk;
   });
 
+  group('Tools', () {
+    Class toolUser;
+    Method invokeTool;
+    Method invokeAbsolutePathTool;
+
+    setUp(() {
+      toolUser = exLibrary.classes.firstWhere((c) => c.name == 'ToolUser');
+      invokeTool =
+          toolUser.allInstanceMethods.firstWhere((m) => m.name == 'invokeTool');
+      invokeAbsolutePathTool = toolUser.allInstanceMethods
+          .firstWhere((m) => m.name == 'invokeAbsolutePathTool');
+      packageGraph.allLocalModelElements.forEach((m) => m.documentation);
+    });
+    tearDown(() {
+      ToolRunner.testingFake = null;
+    });
+    test("can invoke a tool", () {
+      ToolRunner.testingFake = new FakeToolRunner("command");
+      expect(
+          invokeTool.documentation, contains(r'I love  |\[]!@#$%^&*()_+ dogs'));
+    });
+    test("can invoke an absolute path tool", () {
+      ToolRunner.testingFake = new FakeToolRunner("command");
+      expect(
+          invokeAbsolutePathTool.documentation, contains(r'This will appear'));
+      expect(invokeAbsolutePathTool.documentation,
+          isNot(contains(r'This will not appear')));
+    });
+  });
+
   group('Missing and Remote', () {
     test('Verify that SDK libraries are not canonical when missing', () {
       expect(
@@ -113,31 +144,33 @@ void main() {
   });
 
   group('Category', () {
-    test('Verify categories for test_package', () {
+    test('Verify categories for test_package', () async {
       expect(packageGraph.localPackages.length, equals(1));
       expect(packageGraph.localPackages.first.hasCategories, isTrue);
       List<Category> packageCategories =
-          packageGraph.localPackages.first.categories;
+          await packageGraph.localPackages.first.categories;
       expect(packageCategories.length, equals(3));
       expect(packageCategories.map((c) => c.name).toList(),
           orderedEquals(['Real Libraries', 'Unreal', 'Misc']));
       expect(packageCategories.map((c) => c.libraries.length).toList(),
           orderedEquals([2, 2, 1]));
       expect(
-          packageGraph
-              .localPackages.first.defaultCategory.publicLibraries.length,
+          (await packageGraph.localPackages.first.defaultCategory)
+              .publicLibraries
+              .length,
           equals(3));
     });
 
-    test('Verify that packages without categories get handled', () {
+    test('Verify that packages without categories get handled', () async {
       expect(packageGraphSmall.localPackages.length, equals(1));
       expect(packageGraphSmall.localPackages.first.hasCategories, isFalse);
       List<Category> packageCategories =
-          packageGraphSmall.localPackages.first.categories;
+          await packageGraphSmall.localPackages.first.categories;
       expect(packageCategories.length, equals(0));
       expect(
-          packageGraph
-              .localPackages.first.defaultCategory.publicLibraries.length,
+          (await packageGraph.localPackages.first.defaultCategory)
+              .publicLibraries
+              .length,
           equals(3));
     });
   });
@@ -241,9 +274,9 @@ void main() {
         expect(packageGraph.defaultPackage.hasDocumentation, isTrue);
       });
 
-      test('documentation exists', () {
+      test('documentation exists', () async {
         expect(
-            packageGraph.defaultPackage.documentation
+            (await packageGraph.defaultPackage.documentation)
                 .startsWith('# Best Package'),
             isTrue);
       });
@@ -769,10 +802,10 @@ void main() {
       Class DocumentWithATable;
       String docsAsHtml;
 
-      setUp(() {
+      setUp(() async {
         DocumentWithATable = fakeLibrary.classes
             .firstWhere((cls) => cls.name == 'DocumentWithATable');
-        docsAsHtml = DocumentWithATable.documentationAsHtml;
+        docsAsHtml = await DocumentWithATable.documentationAsHtml;
       });
 
       test('Verify table appearance', () {
@@ -798,8 +831,8 @@ void main() {
     group('doc references', () {
       String docsAsHtml;
 
-      setUp(() {
-        docsAsHtml = doAwesomeStuff.documentationAsHtml;
+      setUp(() async {
+        docsAsHtml = await doAwesomeStuff.documentationAsHtml;
       });
 
       test('operator [] reference within a class works', () {
@@ -996,9 +1029,9 @@ void main() {
           '</pre>');
     });
 
-    test('single ref to class', () {
+    test('single ref to class', () async {
       expect(
-          B.documentationAsHtml.contains(
+          (await B.documentationAsHtml).contains(
               '<p>Extends class <a href="ex/Apple-class.html">Apple</a>, use <a href="ex/Apple/Apple.html">new Apple</a> or <a href="ex/Apple/Apple.fromString.html">new Apple.fromString</a></p>'),
           isTrue);
     });
@@ -1010,10 +1043,10 @@ void main() {
               '<p>An async function. It should look like I return a <code>Future</code>.</p>'));
     });
 
-    test('references are correct in exported libraries', () {
+    test('references are correct in exported libraries', () async {
       expect(twoExportsLib, isNotNull);
       expect(extendedClass, isNotNull);
-      String resolved = extendedClass.documentationAsHtml;
+      String resolved = await extendedClass.documentationAsHtml;
       expect(resolved, isNotNull);
       expect(resolved,
           contains('<a href="two_exports/BaseClass-class.html">BaseClass</a>'));
@@ -1021,8 +1054,8 @@ void main() {
           contains('Linking over to <a href="ex/Apple-class.html">Apple</a>'));
     });
 
-    test('references to class and constructors', () {
-      String comment = B.documentationAsHtml;
+    test('references to class and constructors', () async {
+      String comment = await B.documentationAsHtml;
       expect(comment,
           contains('Extends class <a href="ex/Apple-class.html">Apple</a>'));
       expect(
@@ -1033,13 +1066,13 @@ void main() {
               '<a href="ex/Apple/Apple.fromString.html">new Apple.fromString</a>'));
     });
 
-    test('reference to class from another library', () {
-      String comment = superAwesomeClass.documentationAsHtml;
+    test('reference to class from another library', () async {
+      String comment = await superAwesomeClass.documentationAsHtml;
       expect(comment, contains('<a href="ex/Apple-class.html">Apple</a>'));
     });
 
-    test('reference to method', () {
-      String comment = foo2.documentationAsHtml;
+    test('reference to method', () async {
+      String comment = await foo2.documentationAsHtml;
       expect(
           comment,
           equals(
@@ -1079,11 +1112,11 @@ void main() {
 
     test(
         'a property with no explicit getters and setters does not duplicate docs',
-        () {
+        () async {
       Field powers = superAwesomeClass.instanceProperties
           .firstWhere((p) => p.name == 'powers');
       Iterable<Match> matches = new RegExp('In the super class')
-          .allMatches(powers.documentationAsHtml);
+          .allMatches(await powers.documentationAsHtml);
       expect(matches, hasLength(1));
     });
 
@@ -1346,7 +1379,7 @@ void main() {
     // because both the sub and super classes, though from different libraries,
     // are exported out through one library
     test('ExtendingClass has a super class that is also in the same library',
-        () {
+        () async {
       // The real implementation of BaseClass is private, but it is exported.
       expect(ExtendingClass.superChain.first.name, equals('BaseClass'));
       expect(
@@ -1356,7 +1389,8 @@ void main() {
       // exported.
       expect(ExtendingClass.publicSuperChain.first.name, equals('BaseClass'));
       expect(
-          ExtendingClass.publicSuperChain.first.element.canonicalLibrary.name,
+          (await ExtendingClass.publicSuperChain.first.element.canonicalLibrary)
+              .name,
           equals('two_exports'));
     });
 
@@ -2203,8 +2237,8 @@ String topLevelFunction(int param1, bool param2, Cool coolBeans,
 
     test(
         'property with setter and getter and comments with asterixes do not show asterixes',
-        () {
-      expect(sFromApple.documentationAsHtml.contains('/**'), isFalse);
+        () async {
+      expect(await sFromApple.documentationAsHtml, contains('/**'));
     });
 
     test('explicit getter/setter has a getter accessor', () {
